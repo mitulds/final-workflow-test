@@ -1,4 +1,4 @@
-name: 'Sync: Main to QA'
+name: 'Sync: Main to QA (Direct Merge)'
 
 on:
   pull_request:
@@ -10,40 +10,32 @@ jobs:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     permissions:
+      # Contents write is required to push to a protected branch
       contents: write
-      pull-requests: write
 
     steps:
       - name: ⬇️ Checkout repository
         uses: actions/checkout@v4
         with:
+          # Fetch all history for all branches
           fetch-depth: 0
 
       - name: ⚙️ Set up Git configuration
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: 🌿 Create sync branch from QA
+      
+      - name: 🔄 Merge main directly into qa
         run: |
-          BRANCH_NAME="sync/main-into-qa-$(date +%Y-%m-%d)"
-          git checkout -b $BRANCH_NAME origin/qa
-
-      - name: 🔄 Merge main into sync branch
-        run: git merge origin/main
-
-      - name: ⬆️ Push the new branch
-        run: |
-          BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
-          git push origin $BRANCH_NAME
+          # Switch to the qa branch
+          git checkout qa
           
-      - name: 🚀 Create Pull Request
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
-          gh pr create \
-            --base qa \
-            --head $BRANCH_NAME \
-            --title "🤖 Sync: Merge main into qa" \
-            --body-file .github/PULL_REQUEST_TEMPLATE.md
+          # Pull the latest changes for qa just in case
+          git pull origin qa
+          
+          # Merge main into our local qa branch. The workflow will fail here
+          # if there are any merge conflicts, which is the desired behavior.
+          git merge origin/main
+          
+          # Push the merge commit to the remote qa branch
+          git push origin qa
