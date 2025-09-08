@@ -1,4 +1,4 @@
-name: 'Sync: Main to QA (Direct Merge)'
+name: 'Sync: Main to QA (Direct PR)'
 
 on:
   pull_request:
@@ -6,36 +6,35 @@ on:
     branches: ['main']
 
 jobs:
-  sync-main-into-qa:
+  create-sync-pull-request:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     permissions:
-      # Contents write is required to push to a protected branch
-      contents: write
+      # We only need permission to create PRs, not write content.
+      pull-requests: write
+      contents: read # Best practice to grant read-only for contents
 
     steps:
       - name: ⬇️ Checkout repository
         uses: actions/checkout@v4
-        with:
-          # Fetch all history for all branches
-          fetch-depth: 0
 
-      - name: ⚙️ Set up Git configuration
+      - name: 🔎 Check for differences before creating PR
+        id: diff_check
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-      
-      - name: 🔄 Merge main directly into qa
+          # Count commits in main that are not in qa.
+          # We fetch to ensure our remote refs are up to date.
+          git fetch
+          DIFF_COUNT=$(git rev-list --count origin/qa..origin/main)
+          echo "Found $DIFF_COUNT new commits in main to sync."
+          echo "count=$DIFF_COUNT" >> "$GITHUB_OUTPUT"
+
+      - name: 🚀 Create Pull Request if changes exist
+        if: steps.diff_check.outputs.count > 0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Switch to the qa branch
-          git checkout qa
-          
-          # Pull the latest changes for qa just in case
-          git pull origin qa
-          
-          # Merge main into our local qa branch. The workflow will fail here
-          # if there are any merge conflicts, which is the desired behavior.
-          git merge origin/main
-          
-          # Push the merge commit to the remote qa branch
-          git push origin qa
+          gh pr create \
+            --base qa \
+            --head main \
+            --title "🤖 Sync: Merge main into qa" \
+            --body-file .github/PULL_REQUEST_TEMPLATE.md
