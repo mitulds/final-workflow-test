@@ -1,0 +1,49 @@
+name: 'Sync: Main to QA'
+
+on:
+  pull_request:
+    types: [closed]
+    branches: ['main']
+
+jobs:
+  sync-main-into-qa:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: ⬇️ Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: ⚙️ Set up Git configuration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: 🌿 Create sync branch from QA
+        run: |
+          BRANCH_NAME="sync/main-into-qa-$(date +%Y-%m-%d)"
+          git checkout -b $BRANCH_NAME origin/qa
+
+      - name: 🔄 Merge main into sync branch
+        run: git merge origin/main
+
+      - name: ⬆️ Push the new branch
+        run: |
+          BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
+          git push origin $BRANCH_NAME
+          
+      - name: 🚀 Create Pull Request
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
+          gh pr create \
+            --base qa \
+            --head $BRANCH_NAME \
+            --title "🤖 Sync: Merge main into qa" \
+            --body-file .github/PULL_REQUEST_TEMPLATE.md
